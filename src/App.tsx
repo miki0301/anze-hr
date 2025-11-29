@@ -1,8 +1,4 @@
-// 安澤健康人資系統 - Final Fix V2
-import { useState, useEffect } from 'react';
-// 關鍵修正：將型別 import 獨立出來，解決 TS1484 錯誤
-import type { FormEvent } from 'react';
-
+import { useState, useEffect, type FormEvent } from 'react';
 import { 
   Users, 
   ClipboardList, 
@@ -17,7 +13,7 @@ import {
   Briefcase
 } from 'lucide-react';
 
-// --- Type Definitions (TypeScript 修正核心) ---
+// --- Type Definitions ---
 
 interface Task {
   id: string;
@@ -202,7 +198,7 @@ export default function App() {
     const name = formData.get('name') as string;
     const startDate = formData.get('startDate') as string;
     const roleNote = formData.get('otherRoleNote') as string;
-    
+
     let displayRole = JOB_ROLES.find(r => r.id === role)?.label || '';
     if (role === 'other') {
         displayRole = roleNote || '其他人員';
@@ -219,27 +215,41 @@ export default function App() {
       status: 'active',
       tasks: getChecklist(type, role)
     };
-    
+
     setEmployees([...employees, newEmployee]);
     setShowAddModal(false);
     setIsOtherRole(false); // Reset
   };
 
+  // --- 關鍵修復：勾選狀態同步邏輯 ---
   const toggleTask = (empId: string, taskId: string) => {
-    setEmployees(employees.map(emp => {
+    // 1. 計算新的員工列表
+    const updatedEmployees = employees.map(emp => {
       if (emp.id !== empId) return emp;
       return {
         ...emp,
         tasks: emp.tasks.map(t => {
           if (t.id !== taskId) return t;
+          const newStatus = t.status === 'pending' ? 'completed' : 'pending';
           return { 
             ...t, 
-            status: t.status === 'pending' ? 'completed' : 'pending',
-            completedDate: t.status === 'pending' ? new Date().toISOString().split('T')[0] : null
+            status: newStatus,
+            completedDate: newStatus === 'completed' ? new Date().toISOString().split('T')[0] : null
           };
         })
       };
-    }));
+    });
+
+    // 2. 更新主要資料庫
+    setEmployees(updatedEmployees);
+
+    // 3. 如果目前正在查看這位員工，也必須更新顯示中的資料
+    if (selectedEmployee?.id === empId) {
+        const updatedCurrentEmp = updatedEmployees.find(e => e.id === empId);
+        if (updatedCurrentEmp) {
+            setSelectedEmployee(updatedCurrentEmp);
+        }
+    }
   };
 
   const deleteEmployee = (id: string) => {
@@ -338,13 +348,13 @@ export default function App() {
                             onClick={() => { 
                               const emp = employees.find(e => e.id === task.empId);
                               if(emp) {
-                                setSelectedEmployee(emp); 
+                                setSelectedEmployee(emp);
                                 setActiveTab('employees'); 
                               }
                             }}
                             className="text-teal-600 text-sm font-medium hover:underline mt-1"
                           >
-                            處理
+                             處理
                           </button>
                         </div>
                     ))}
@@ -502,7 +512,7 @@ export default function App() {
                     <label key={type.id} className="cursor-pointer">
                       <input type="radio" name="type" value={type.id} className="peer sr-only" required defaultChecked={type.id === 'fulltime'} />
                       <div className="border border-slate-200 rounded-md p-2 text-center text-sm peer-checked:bg-teal-50 peer-checked:border-teal-500 peer-checked:text-teal-700 transition-all">
-                        {type.label}
+                          {type.label}
                       </div>
                     </label>
                   ))}
