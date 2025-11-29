@@ -1,4 +1,4 @@
-// 安澤健康人資系統 - Final Force Update
+// 安澤健康人資系統 - Final Clean Version
 import React, { useState, useEffect, FormEvent } from 'react';
 import { 
   Users, 
