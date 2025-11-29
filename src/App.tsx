@@ -1,6 +1,6 @@
-// 安澤健康人資系統 - Final Fix for TS1484
-import { useState, useEffect } from 'react'; 
-// 將 FormEvent 改為 type-only import 以符合 verbatimModuleSyntax 規範
+// 安澤健康人資系統 - Final Fix V2
+import { useState, useEffect } from 'react';
+// 關鍵修正：將型別 import 獨立出來，解決 TS1484 錯誤
 import type { FormEvent } from 'react';
 
 import { 
