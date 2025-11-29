@@ -1,29 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { 
   Users, 
   ClipboardList, 
   AlertTriangle, 
   CheckCircle, 
-  FileText, 
   Plus, 
   Trash2, 
   ChevronRight, 
-  Calendar,
   Info,
   ShieldAlert,
   Stethoscope,
-  Clock,
   Briefcase
 } from 'lucide-react';
 
+// --- Type Definitions (TypeScript 修正核心) ---
+
+interface Task {
+  id: string;
+  title: string;
+  desc: string;
+  critical: boolean;
+  risk: string;
+  status: 'pending' | 'completed';
+  completedDate: string | null;
+}
+
+interface Employee {
+  id: string;
+  name: string;
+  startDate: string;
+  type: string;
+  role: string;
+  roleNote: string;
+  displayRole: string;
+  status: 'active' | 'resigned';
+  tasks: Task[];
+}
+
+interface EmpTypeConfig {
+  id: string;
+  label: string;
+  color: string;
+}
+
+interface JobRoleConfig {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+}
+
 // --- 資料定義 ---
 
-const EMP_TYPES = [
+const EMP_TYPES: EmpTypeConfig[] = [
   { id: 'fulltime', label: '專任 (全職)', color: 'bg-indigo-100 text-indigo-700' },
   { id: 'parttime', label: '兼職 (部分工時)', color: 'bg-orange-100 text-orange-700' }
 ];
 
-const JOB_ROLES = [
+const JOB_ROLES: JobRoleConfig[] = [
   { id: 'doctor', label: '醫師', icon: Stethoscope },
   { id: 'nurse', label: '護理師', icon: Users },
   { id: 'psychologist', label: '心理師', icon: Users },
@@ -33,8 +66,8 @@ const JOB_ROLES = [
 
 // --- 法規檢核資料庫 (動態生成) ---
 
-const getChecklist = (type, role) => {
-  const baseList = [
+const getChecklist = (type: string, role: string): Task[] => {
+  const baseList: Partial<Task>[] = [
     { 
       id: 'ob-1', 
       title: '收取基本資料', 
@@ -58,7 +91,6 @@ const getChecklist = (type, role) => {
     }
   ];
 
-  // 針對兼職人員的特殊提醒
   if (type === 'parttime') {
     baseList.push({
       id: 'pt-1',
@@ -75,7 +107,6 @@ const getChecklist = (type, role) => {
       risk: '特休給付不足'
     });
   } else {
-    // 全職人員
     baseList.push({
       id: 'ft-1',
       title: '簽署勞動契約 (不定期)',
@@ -85,7 +116,6 @@ const getChecklist = (type, role) => {
     });
   }
 
-  // 針對醫師的特殊提醒 (委任 vs 僱傭)
   if (role === 'doctor') {
     baseList.push({
       id: 'doc-1',
@@ -94,7 +124,6 @@ const getChecklist = (type, role) => {
       critical: true,
       risk: '身分認定爭議'
     });
-    // 醫師通常需報備衛生局
     baseList.push({
       id: 'doc-2',
       title: '衛生局執業登記 (支援報備)',
@@ -103,7 +132,6 @@ const getChecklist = (type, role) => {
       risk: '違反醫療法'
     });
   } else {
-    // 其他醫事人員 (護理/治療師) 幾乎都適用勞基法
     baseList.push({
         id: 'med-1',
         title: '醫事人員執業登記',
@@ -113,34 +141,47 @@ const getChecklist = (type, role) => {
     });
   }
 
-  return baseList.map(item => ({ ...item, status: 'pending', completedDate: null }));
+  return baseList.map(item => ({ 
+    id: item.id!, 
+    title: item.title!, 
+    desc: item.desc!, 
+    critical: item.critical!, 
+    risk: item.risk!, 
+    status: 'pending', 
+    completedDate: null 
+  }));
 };
 
 // --- 元件 ---
 
-const Card = ({ children, className = "" }) => (
+const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
   <div className={`bg-white rounded-lg shadow-sm border border-slate-200 ${className}`}>
     {children}
   </div>
 );
 
-const Badge = ({ color, text }) => (
-  <span className={`px-2 py-0.5 rounded text-xs font-medium border border-transparent ${color}`}>
+const Badge = ({ color, text }: { color?: string, text?: string }) => (
+  <span className={`px-2 py-0.5 rounded text-xs font-medium border border-transparent ${color || 'bg-gray-100 text-gray-600'}`}>
     {text}
   </span>
 );
 
-export default function MicroClinicHR() {
+export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [employees, setEmployees] = useState([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [isOtherRole, setIsOtherRole] = useState(false);
 
   // 初始化
   useEffect(() => {
     const saved = localStorage.getItem('micro_clinic_hr');
     if (saved) {
-      setEmployees(JSON.parse(saved));
+      try {
+        setEmployees(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load data", e);
+      }
     }
   }, []);
 
@@ -149,34 +190,38 @@ export default function MicroClinicHR() {
   }, [employees]);
 
   // 新增員工表單處理
-  const handleAddEmployee = (e) => {
+  const handleAddEmployee = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
-    const role = formData.get('role');
-    const type = formData.get('type');
+    const formData = new FormData(e.currentTarget);
+    const role = formData.get('role') as string;
+    const type = formData.get('type') as string;
+    const name = formData.get('name') as string;
+    const startDate = formData.get('startDate') as string;
+    const roleNote = formData.get('otherRoleNote') as string;
     
-    let displayRole = JOB_ROLES.find(r => r.id === role)?.label;
+    let displayRole = JOB_ROLES.find(r => r.id === role)?.label || '';
     if (role === 'other') {
-        displayRole = formData.get('otherRoleNote') || '其他人員';
+        displayRole = roleNote || '其他人員';
     }
 
-    const newEmployee = {
+    const newEmployee: Employee = {
       id: Date.now().toString(),
-      name: formData.get('name'),
-      startDate: formData.get('startDate'),
-      type: type, // fulltime, parttime
-      role: role, // doctor, nurse...
-      roleNote: formData.get('otherRoleNote'), // 備註
+      name: name,
+      startDate: startDate,
+      type: type,
+      role: role,
+      roleNote: roleNote,
       displayRole: displayRole,
       status: 'active',
-      tasks: getChecklist(type, role) // 根據身分動態生成清單
+      tasks: getChecklist(type, role)
     };
     
     setEmployees([...employees, newEmployee]);
     setShowAddModal(false);
+    setIsOtherRole(false); // Reset
   };
 
-  const toggleTask = (empId, taskId) => {
+  const toggleTask = (empId: string, taskId: string) => {
     setEmployees(employees.map(emp => {
       if (emp.id !== empId) return emp;
       return {
@@ -193,7 +238,7 @@ export default function MicroClinicHR() {
     }));
   };
 
-  const deleteEmployee = (id) => {
+  const deleteEmployee = (id: string) => {
     if(confirm('確定要刪除資料嗎？')) {
       setEmployees(employees.filter(e => e.id !== id));
       if (selectedEmployee?.id === id) setSelectedEmployee(null);
@@ -268,14 +313,14 @@ export default function MicroClinicHR() {
                   <AlertTriangle className="w-5 h-5 text-amber-500" />
                   待辦事項提醒
                 </h3>
-                {employees.flatMap(e => e.tasks.filter(t => t.status === 'pending' && t.critical).map(t => ({...t, empName: e.name, empId: e.id}))).length === 0 ? (
+                {employees.flatMap(e => e.tasks.filter(t => t.status === 'pending' && t.critical).map(t => ({...t, empName: e.name, empId: e.id, type: e.type}))).length === 0 ? (
                    <div className="text-center py-8 bg-white rounded-lg border border-dashed border-slate-300 text-slate-500">
                     目前合規狀況良好 🎉
                   </div>
                 ) : (
                   <div className="space-y-3">
-                     {employees.flatMap(e => e.tasks.filter(t => t.status === 'pending' && t.critical).map(t => ({...t, empName: e.name, empId: e.id, type: employees.find(emp=>emp.id === e.id).type})))
-                      .map((task, idx) => (
+                     {employees.flatMap(e => e.tasks.filter(t => t.status === 'pending' && t.critical).map(t => ({...t, empName: e.name, empId: e.id, type: e.type})))
+                      .map((task) => (
                         <div key={`${task.empId}-${task.id}`} className="bg-white p-3 rounded-lg border border-red-100 shadow-sm flex justify-between items-start">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
@@ -286,7 +331,13 @@ export default function MicroClinicHR() {
                             <div className="text-xs text-red-500 mt-1">⚠️ {task.risk}</div>
                           </div>
                           <button 
-                            onClick={() => { setSelectedEmployee(employees.find(e => e.id === task.empId)); setActiveTab('employees'); }}
+                            onClick={() => { 
+                              const emp = employees.find(e => e.id === task.empId);
+                              if(emp) {
+                                setSelectedEmployee(emp); 
+                                setActiveTab('employees'); 
+                              }
+                            }}
                             className="text-teal-600 text-sm font-medium hover:underline mt-1"
                           >
                             處理
@@ -459,17 +510,10 @@ export default function MicroClinicHR() {
                 <select 
                     required 
                     name="role" 
-                    defaultValue="" // Changed from selected on option to defaultValue on select
+                    defaultValue=""
                     className="w-full border border-slate-300 rounded px-3 py-2 outline-none focus:border-teal-500 bg-white"
                     onChange={(e) => {
-                        const noteInput = document.getElementById('otherRoleNoteContainer');
-                        if (e.target.value === 'other') {
-                            noteInput.style.display = 'block';
-                            document.getElementById('otherRoleInput').setAttribute('required', 'true');
-                        } else {
-                            noteInput.style.display = 'none';
-                            document.getElementById('otherRoleInput').removeAttribute('required');
-                        }
+                        setIsOtherRole(e.target.value === 'other');
                     }}
                 >
                   <option value="" disabled>請選擇職務</option> 
@@ -479,10 +523,18 @@ export default function MicroClinicHR() {
                 </select>
               </div>
 
-              <div id="otherRoleNoteContainer" style={{display: 'none'}}>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">請註明職務名稱</label>
-                 <input id="otherRoleInput" name="otherRoleNote" type="text" className="w-full border border-slate-300 rounded px-3 py-2 outline-none focus:border-teal-500" placeholder="例如：行政櫃台、清潔人員" />
-              </div>
+              {isOtherRole && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">請註明職務名稱</label>
+                  <input 
+                    required 
+                    name="otherRoleNote" 
+                    type="text" 
+                    className="w-full border border-slate-300 rounded px-3 py-2 outline-none focus:border-teal-500" 
+                    placeholder="例如：行政櫃台、清潔人員" 
+                  />
+                </div>
+              )}
 
               <div className="bg-teal-50 p-3 rounded text-sm text-teal-800 flex gap-2">
                 <Info className="w-5 h-5 flex-shrink-0" />
