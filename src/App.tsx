@@ -170,7 +170,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  
+  // 修改 1：只儲存「選中員工的 ID」，而非整個物件，確保資料永遠同步
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  
   const [isOtherRole, setIsOtherRole] = useState(false);
 
   // 初始化
@@ -188,6 +191,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('micro_clinic_hr', JSON.stringify(employees));
   }, [employees]);
+
+  // 修改 2：即時計算當前選中的員工資料
+  const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || null;
 
   // 新增員工表單處理
   const handleAddEmployee = (e: FormEvent<HTMLFormElement>) => {
@@ -218,13 +224,11 @@ export default function App() {
 
     setEmployees([...employees, newEmployee]);
     setShowAddModal(false);
-    setIsOtherRole(false); // Reset
+    setIsOtherRole(false); 
   };
 
-  // --- 關鍵修復：勾選狀態同步邏輯 ---
   const toggleTask = (empId: string, taskId: string) => {
-    // 1. 計算新的員工列表
-    const updatedEmployees = employees.map(emp => {
+    setEmployees(employees.map(emp => {
       if (emp.id !== empId) return emp;
       return {
         ...emp,
@@ -238,24 +242,14 @@ export default function App() {
           };
         })
       };
-    });
-
-    // 2. 更新主要資料庫
-    setEmployees(updatedEmployees);
-
-    // 3. 如果目前正在查看這位員工，也必須更新顯示中的資料
-    if (selectedEmployee?.id === empId) {
-        const updatedCurrentEmp = updatedEmployees.find(e => e.id === empId);
-        if (updatedCurrentEmp) {
-            setSelectedEmployee(updatedCurrentEmp);
-        }
-    }
+    }));
   };
 
   const deleteEmployee = (id: string) => {
     if(confirm('確定要刪除資料嗎？')) {
       setEmployees(employees.filter(e => e.id !== id));
-      if (selectedEmployee?.id === id) setSelectedEmployee(null);
+      // 修改 3：如果是刪除當前選中的人，清空 ID
+      if (selectedEmployeeId === id) setSelectedEmployeeId(null);
     }
   };
 
@@ -287,13 +281,13 @@ export default function App() {
         {/* Sidebar */}
         <div className="md:col-span-3 space-y-2">
           <button 
-            onClick={() => { setActiveTab('dashboard'); setSelectedEmployee(null); }}
+            onClick={() => { setActiveTab('dashboard'); setSelectedEmployeeId(null); }}
             className={`w-full text-left px-4 py-2 rounded-md flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-teal-50 text-teal-700 font-medium' : 'text-slate-600 hover:bg-white'}`}
           >
             <ClipboardList className="w-4 h-4" /> 總覽儀表板
           </button>
           <button 
-            onClick={() => { setActiveTab('employees'); setSelectedEmployee(null); }}
+            onClick={() => { setActiveTab('employees'); setSelectedEmployeeId(null); }}
             className={`w-full text-left px-4 py-2 rounded-md flex items-center gap-2 ${activeTab === 'employees' ? 'bg-teal-50 text-teal-700 font-medium' : 'text-slate-600 hover:bg-white'}`}
           >
             <Users className="w-4 h-4" /> 人員名單
@@ -346,11 +340,9 @@ export default function App() {
                           </div>
                           <button 
                             onClick={() => { 
-                              const emp = employees.find(e => e.id === task.empId);
-                              if(emp) {
-                                setSelectedEmployee(emp);
-                                setActiveTab('employees'); 
-                              }
+                              // 修改 4：點擊待辦事項時，只設定 ID
+                              setSelectedEmployeeId(task.empId);
+                              setActiveTab('employees'); 
                             }}
                             className="text-teal-600 text-sm font-medium hover:underline mt-1"
                           >
@@ -380,7 +372,8 @@ export default function App() {
                     
                     return (
                       <Card key={emp.id} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition-shadow cursor-pointer">
-                        <div onClick={() => setSelectedEmployee(emp)} className="flex-1">
+                        {/* 修改 5：列表點擊時，設定 ID */}
+                        <div onClick={() => setSelectedEmployeeId(emp.id)} className="flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-bold text-lg">{emp.name}</h3>
                             <Badge color={typeConfig?.color} text={typeConfig?.label} />
@@ -417,7 +410,7 @@ export default function App() {
           {activeTab === 'employees' && selectedEmployee && (
             <div>
               <button 
-                onClick={() => setSelectedEmployee(null)}
+                onClick={() => setSelectedEmployeeId(null)}
                 className="mb-4 text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1"
               >
                 ← 返回名單
