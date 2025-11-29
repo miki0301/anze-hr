@@ -10,7 +10,9 @@ import {
   Info,
   ShieldAlert,
   Stethoscope,
-  Briefcase
+  Briefcase,
+  Filter,       // 新增圖示
+  XCircle       // 新增圖示
 } from 'lucide-react';
 
 // --- Type Definitions ---
@@ -64,7 +66,7 @@ const JOB_ROLES: JobRoleConfig[] = [
   { id: 'other', label: '其他人員 (行政/清潔等)', icon: Briefcase }
 ];
 
-// --- 法規檢核資料庫 (動態生成) ---
+// --- 法規檢核資料庫 ---
 
 const getChecklist = (type: string, role: string): Task[] => {
   const baseList: Partial<Task>[] = [
@@ -154,8 +156,11 @@ const getChecklist = (type: string, role: string): Task[] => {
 
 // --- 元件 ---
 
-const Card = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
-  <div className={`bg-white rounded-lg shadow-sm border border-slate-200 ${className}`}>
+const Card = ({ children, className = "", onClick }: { children: React.ReactNode, className?: string, onClick?: () => void }) => (
+  <div 
+    onClick={onClick}
+    className={`bg-white rounded-lg shadow-sm border border-slate-200 ${className} ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+  >
     {children}
   </div>
 );
@@ -170,13 +175,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  
-  // 修改 1：只儲存「選中員工的 ID」，而非整個物件，確保資料永遠同步
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  
+  // 新增：篩選狀態 ('all' | 'risk' | 'parttime')
+  const [filterType, setFilterType] = useState<'all' | 'risk' | 'parttime'>('all');
   
   const [isOtherRole, setIsOtherRole] = useState(false);
 
-  // 初始化
   useEffect(() => {
     const saved = localStorage.getItem('micro_clinic_hr');
     if (saved) {
@@ -192,10 +197,19 @@ export default function App() {
     localStorage.setItem('micro_clinic_hr', JSON.stringify(employees));
   }, [employees]);
 
-  // 修改 2：即時計算當前選中的員工資料
   const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || null;
 
-  // 新增員工表單處理
+  // 計算篩選後的清單
+  const filteredEmployees = employees.filter(emp => {
+    if (filterType === 'all') return true;
+    if (filterType === 'parttime') return emp.type === 'parttime';
+    if (filterType === 'risk') {
+        // 篩選有「未完成」「重要」任務的人
+        return emp.tasks.some(t => t.critical && t.status === 'pending');
+    }
+    return true;
+  });
+
   const handleAddEmployee = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -224,7 +238,9 @@ export default function App() {
 
     setEmployees([...employees, newEmployee]);
     setShowAddModal(false);
-    setIsOtherRole(false); 
+    setIsOtherRole(false);
+    // 新增後自動切換到全列表並顯示該員工
+    setFilterType('all');
   };
 
   const toggleTask = (empId: string, taskId: string) => {
@@ -248,16 +264,21 @@ export default function App() {
   const deleteEmployee = (id: string) => {
     if(confirm('確定要刪除資料嗎？')) {
       setEmployees(employees.filter(e => e.id !== id));
-      // 修改 3：如果是刪除當前選中的人，清空 ID
       if (selectedEmployeeId === id) setSelectedEmployeeId(null);
     }
   };
 
-  // 統計
   const stats = {
     total: employees.length,
     pendingCritical: employees.reduce((acc, emp) => acc + emp.tasks.filter(t => t.critical && t.status === 'pending').length, 0),
     partTime: employees.filter(e => e.type === 'parttime').length
+  };
+
+  // 導航到列表並篩選的輔助函式
+  const navigateToList = (filter: 'all' | 'risk' | 'parttime') => {
+    setFilterType(filter);
+    setActiveTab('employees');
+    setSelectedEmployeeId(null); // 回到列表頁
   };
 
   return (
@@ -287,7 +308,7 @@ export default function App() {
             <ClipboardList className="w-4 h-4" /> 總覽儀表板
           </button>
           <button 
-            onClick={() => { setActiveTab('employees'); setSelectedEmployeeId(null); }}
+            onClick={() => navigateToList('all')}
             className={`w-full text-left px-4 py-2 rounded-md flex items-center gap-2 ${activeTab === 'employees' ? 'bg-teal-50 text-teal-700 font-medium' : 'text-slate-600 hover:bg-white'}`}
           >
             <Users className="w-4 h-4" /> 人員名單
@@ -301,18 +322,36 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Card className="p-4 border-l-4 border-l-teal-500">
-                  <div className="text-slate-500 text-xs uppercase tracking-wide font-semibold">在職總數</div>
-                  <div className="text-2xl font-bold mt-1">{stats.total}</div>
+                {/* 讓卡片可以點擊，並加入 onClick 事件 */}
+                <Card onClick={() => navigateToList('all')} className="p-4 border-l-4 border-l-teal-500">
+                  <div className="flex justify-between items-start">
+                    <div>
+                        <div className="text-slate-500 text-xs uppercase tracking-wide font-semibold">在職總數</div>
+                        <div className="text-2xl font-bold mt-1">{stats.total}</div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300" />
+                  </div>
                 </Card>
-                <Card className="p-4 border-l-4 border-l-red-500">
-                  <div className="text-slate-500 text-xs uppercase tracking-wide font-semibold">法規風險未完成</div>
-                  <div className="text-2xl font-bold mt-1 text-red-600">{stats.pendingCritical} <span className="text-sm font-normal text-slate-400">項</span></div>
+
+                <Card onClick={() => navigateToList('risk')} className="p-4 border-l-4 border-l-red-500">
+                  <div className="flex justify-between items-start">
+                    <div>
+                        <div className="text-slate-500 text-xs uppercase tracking-wide font-semibold">法規風險未完成</div>
+                        <div className="text-2xl font-bold mt-1 text-red-600">{stats.pendingCritical} <span className="text-sm font-normal text-slate-400">項</span></div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300" />
+                  </div>
                 </Card>
-                <Card className="p-4 border-l-4 border-l-orange-500">
-                  <div className="text-slate-500 text-xs uppercase tracking-wide font-semibold">兼職人員</div>
-                  <div className="text-2xl font-bold mt-1">{stats.partTime} <span className="text-sm font-normal text-slate-400">人</span></div>
-                  <div className="text-xs text-orange-600 mt-1">留意國定假日雙倍薪</div>
+
+                <Card onClick={() => navigateToList('parttime')} className="p-4 border-l-4 border-l-orange-500">
+                  <div className="flex justify-between items-start">
+                    <div>
+                        <div className="text-slate-500 text-xs uppercase tracking-wide font-semibold">兼職人員</div>
+                        <div className="text-2xl font-bold mt-1">{stats.partTime} <span className="text-sm font-normal text-slate-400">人</span></div>
+                        <div className="text-xs text-orange-600 mt-1">留意國定假日雙倍薪</div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300" />
+                  </div>
                 </Card>
               </div>
 
@@ -340,7 +379,6 @@ export default function App() {
                           </div>
                           <button 
                             onClick={() => { 
-                              // 修改 4：點擊待辦事項時，只設定 ID
                               setSelectedEmployeeId(task.empId);
                               setActiveTab('employees'); 
                             }}
@@ -359,21 +397,42 @@ export default function App() {
           {/* Employee List */}
           {activeTab === 'employees' && !selectedEmployee && (
             <div className="space-y-4">
-              <h2 className="text-lg font-bold">人員名單</h2>
-              {employees.length === 0 ? (
+              <div className="flex justify-between items-center">
+                  <h2 className="text-lg font-bold flex items-center gap-2">
+                    {filterType === 'all' && '人員名單'}
+                    {filterType === 'risk' && <span className="text-red-600 flex items-center gap-2"><Filter className="w-4 h-4"/> 待處理法規風險人員</span>}
+                    {filterType === 'parttime' && <span className="text-orange-600 flex items-center gap-2"><Filter className="w-4 h-4"/> 兼職人員名單</span>}
+                  </h2>
+                  
+                  {/* 顯示清除篩選按鈕 */}
+                  {filterType !== 'all' && (
+                    <button 
+                        onClick={() => setFilterType('all')}
+                        className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded"
+                    >
+                        <XCircle className="w-4 h-4" /> 顯示全部
+                    </button>
+                  )}
+              </div>
+
+              {filteredEmployees.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-lg border border-dashed border-slate-300">
-                  <p className="text-slate-500">尚無人員資料</p>
+                  <p className="text-slate-500">
+                    {filterType === 'all' ? '尚無人員資料' : '沒有符合篩選條件的人員'}
+                  </p>
+                  {filterType !== 'all' && (
+                      <button onClick={() => setFilterType('all')} className="mt-2 text-teal-600 hover:underline">查看所有人員</button>
+                  )}
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  {employees.map(emp => {
+                  {filteredEmployees.map(emp => {
                     const criticalCount = emp.tasks.filter(t => t.status === 'pending' && t.critical).length;
                     const typeConfig = EMP_TYPES.find(t => t.id === emp.type);
                     
                     return (
                       <Card key={emp.id} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-md transition-shadow cursor-pointer">
-                        {/* 修改 5：列表點擊時，設定 ID */}
-                        <div onClick={() => setSelectedEmployeeId(emp.id)} className="flex-1">
+                        <div onClick={() => setSelectedEmployeeId(emp.id)} className="flex-1 w-full">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-bold text-lg">{emp.name}</h3>
                             <Badge color={typeConfig?.color} text={typeConfig?.label} />
@@ -384,7 +443,7 @@ export default function App() {
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
                           {criticalCount > 0 ? (
                             <div className="text-red-600 text-sm font-bold flex items-center gap-1">
                               <AlertTriangle className="w-3 h-3" />
